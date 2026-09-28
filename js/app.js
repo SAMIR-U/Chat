@@ -11,6 +11,7 @@ var cancelarBtn = $('#cancel-btn');
 var postBtn = $('#post-btn');
 var avatarSel = $('#seleccion');
 var timeline = $('#timeline');
+const db = new PouchDB('mi_base_local');
 
 var modal = $('#modal');
 var modalAvatar = $('#modal-avatar');
