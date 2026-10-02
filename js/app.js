@@ -1,6 +1,5 @@
-
 // Referencias de jQuery
-if(navigator.serviceWorker){
+if (navigator.serviceWorker) {
     navigator.serviceWorker.register('./sw.js');
 }
 
@@ -11,20 +10,83 @@ var cancelarBtn = $('#cancel-btn');
 var postBtn = $('#post-btn');
 var avatarSel = $('#seleccion');
 var timeline = $('#timeline');
-const db = new PouchDB('mi_base_local');
+const db = new PouchDB('heroes');
 
 var modal = $('#modal');
 var modalAvatar = $('#modal-avatar');
 var avatarBtns = $('.seleccion-avatar');
 var txtMensaje = $('#txtMensaje');
 
-// El usuario, contiene el ID del héroe seleccionado
 var usuario;
 
+var postImgBtn = $('#post-img-btn');
+var inputImagen = $('#inputImagen');
 
 
+db.info()
+    .then(info => {
+        console.log('La base de datos está lista y disponible.');
+        console.log('Información técnica de la BD:', info);
+        if (info.doc_count === 0) {
+            console.log('La base de datos existe pero está vacía.');
+        } else {
+            console.log('La base de datos tiene ${info.doc_count} documentos.');
+        }
+    })
+    .catch(error => {
+        console.error('No se pudo acceder o crear la base de datos:', error);
+    });
 
+
+db.on('initialized', () => {
+    console.log('La base de datos se ha abierto con éxito.');
+});
+
+db.put({
+    _id: 'mensaje-spiderman001',
+    personaje: 'spiderman',
+    mensaje: 'La tía May hizo panqueques',
+    fecha: new Date().toISOString()
+}).then(function (response) {
+    console.log('Creado con id personalizado:', response);
+});
+
+db.post({
+    personaje: 'ironman',
+    mensaje: 'Soy Iron Man',
+    fecha: new Date().toISOString()
+}).then(function (response) {
+    console.log('ID autogenerado:', response);
+});
+
+
+db.get('mensaje-spiderman001').then(function (doc) {
+    console.log('_id:', doc._id);
+    console.log('_rev:', doc._rev);
+    console.log('Contenido completo:', doc);
+});
+
+db.get('mensaje-spiderman001').then(function (doc) {
+    doc.mensaje = 'Contenido actualizado';
+    return db.put(doc);
+}).then(function () {
+    console.log('Actualización exitosa');
+});
+
+db.get('mensaje-spiderman001').then(function (doc) {
+    console.log('_id:', doc._id);
+    console.log('Contenido completo sin rev:', doc);
+});
+
+db.get('mensaje-spiderman001').then(function (doc) {
+    console.log('_id:', doc._id);
+    console.log('_rev:', doc._rev);
+    console.log('Contenido completo:', doc);
+});
 // ===== Codigo de la aplicación
+
+
+
 
 function crearMensajeHTML(mensaje, personaje) {
 
@@ -126,3 +188,212 @@ postBtn.on('click', function () {
     crearMensajeHTML(mensaje, usuario);
 
 });
+
+
+// a) Insertar mediante objeto JSON con db.post() -> _id autogenerado
+var mensajeAutogenerado = {
+    personaje: "spiderman",
+    texto: "Mensaje de prueba",
+    fecha: new Date().toISOString(),
+    tipo: "mensaje"
+};
+
+
+db.post(mensajeAutogenerado)
+    .then(function (response) {
+        console.log("=== db.post() ===");
+        console.log("Identificador generado por PouchDB:", response.id);
+        console.log("Revisión generada:", response.rev);
+        console.log("Respuesta completa:", response);
+    })
+    .catch(function (err) {
+        console.error("Error en db.post():", err);
+    });
+
+// b) Insertar mediante documento completo con db.put() -> _id personalizado
+var mensajePersonalizado = {
+    _id: "mensaje-spiderman001",
+    personaje: "spiderman",
+    texto: "Mensaje de prueba",
+    fecha: new Date().toISOString(),
+    tipo: "mensaje"
+};
+
+db.put(mensajePersonalizado)
+    .then(function (response) {
+        console.log("=== db.put() ===");
+        console.log("Identificador personalizado almacenado:", response.id);
+        console.log("Revisión generada:", response.rev);
+        console.log("Respuesta completa:", response);
+    })
+    .catch(function (err) {
+        if (err.status === 409) {
+            console.log("El documento mensaje-spiderman001 ya existe. Se omite la creación.");
+        } else {
+            console.error("Error en db.put():", err);
+        }
+    });
+
+// Verificación de que el _id personalizado quedó almacenado correctamente
+db.get("mensaje-spiderman001")
+    .then(function (doc) {
+        console.log("=== Verificación db.get() ===");
+        console.log("_id guardado:", doc._id);
+        console.log("_rev guardado:", doc._rev);
+        console.log("Documento completo:", doc);
+    })
+    .catch(function (err) {
+        console.error("No se encontró el documento:", err);
+    });
+
+postImgBtn.on('click', function () {
+    inputImagen.click();
+});
+
+function obtenerImagenSeleccionada() {
+    var files = inputImagen[0].files;
+    if (files.length === 0) {
+        return null;
+    }
+    return files[0];
+}
+
+inputImagen.on('change', function () {
+    var archivo = obtenerImagenSeleccionada();
+    if (!archivo) {
+        return;
+    }
+
+    var url = URL.createObjectURL(archivo);
+    var preview = document.getElementById('img-preview');
+    if (!preview) {
+        preview = document.createElement('img');
+        preview.id = 'img-preview';
+        preview.style.cssText = 'max-width:100%;margin-top:8px;border-radius:8px;';
+        $('.nuevo-mensaje').append(preview);
+    }
+    preview.src = url;
+});
+
+
+async function cargarMensajes() {
+    try {
+        var resultado = await db.allDocs({
+            include_docs: true,
+            descending: false
+        });
+
+        var mensajes = resultado.rows
+            .map(function (row) { return row.doc; })
+            .filter(function (doc) {
+                return doc && doc.tipo === 'mensaje';
+            });
+
+        mensajes.sort(function (a, b) {
+            return new Date(a.fecha) - new Date(b.fecha);
+        });
+
+        timeline.empty();
+
+        for (var i = 0; i < mensajes.length; i++) {
+            var doc = mensajes[i];
+            renderizarMensaje(doc);
+        }
+
+        console.log('[allDocs] Documentos totales:', resultado.total_rows);
+        console.log('[allDocs] Mensajes renderizados:', mensajes.length);
+    } catch (error) {
+        console.error('[allDocs] Error al recuperar documentos:', error);
+    }
+}
+
+function renderizarMensaje(doc) {
+    var content = `
+    <li class="animated fadeIn fast" data-id="${doc._id}">
+        <div class="avatar">
+            <img src="img/avatars/${doc.personaje}.jpg">
+        </div>
+        <div class="bubble-container">
+            <div class="bubble">
+                <h3>@${doc.personaje}</h3>
+                <br/>
+                ${doc.texto}
+            </div>
+            <div class="arrow"></div>
+        </div>
+    </li>
+    `;
+
+    timeline.append(content);
+
+    if (doc._attachments && doc._attachments['imagen.jpg']) {
+        mostrarImagenDeMensaje(doc._id, 'imagen.jpg').then(function (img) {
+            if (img) {
+                timeline.children('li[data-id="' + doc._id + '"]')
+                    .find('.bubble')
+                    .append(img);
+            }
+        });
+    }
+}
+
+postBtn.on('click', async function () {
+    var mensaje = txtMensaje.val();
+    if (mensaje.length === 0) {
+        cancelarBtn.click();
+        return;
+    }
+    var archivoBlob = obtenerImagenSeleccionada();
+    try {
+        var doc = {
+            personaje: usuario,
+            texto: mensaje,
+            fecha: new Date().toISOString(),
+            tipo: 'mensaje'
+        };
+
+        var response = await db.post(doc);
+
+        if (archivoBlob) {
+            await db.putAttachment(
+                response.id,
+                'imagen.jpg',
+                response.rev,
+                archivoBlob,
+                archivoBlob.type
+            );
+        }
+        inputImagen.val('');
+        var preview = document.getElementById('img-preview');
+        if (preview) { preview.remove(); }
+
+        cancelarBtn.click();
+        await cargarMensajes();
+    } catch (error) {
+        console.error('Error al guardar mensaje:', error);
+    }
+});
+
+async function editarMensaje(docId, nuevoTexto) {
+    try {
+        var doc = await db.get(docId);
+        doc.texto = nuevoTexto;
+        doc.fecha = new Date().toISOString();
+        await db.put(doc);
+        await cargarMensajes();
+    } catch (error) {
+        console.error('Error al editar mensaje:', error);
+    }
+}
+
+async function eliminarMensaje(docId) {
+    try {
+        var doc = await db.get(docId);
+        await db.remove(doc);
+        await cargarMensajes();
+    } catch (error) {
+        console.error('Error al eliminar mensaje:', error);
+    }
+}
+
+cargarMensajes();
