@@ -173,21 +173,11 @@ cancelarBtn.on('click', function () {
     }, 200, function () {
         modal.addClass('oculto');
         txtMensaje.val('');
+        limpiarImagenSeleccionada();
     });
 });
 
-// Boton de enviar mensaje
-postBtn.on('click', function () {
-
-    var mensaje = txtMensaje.val();
-    if (mensaje.length === 0) {
-        cancelarBtn.click();
-        return;
-    }
-
-    crearMensajeHTML(mensaje, usuario);
-
-});
+// (El envio de mensajes se maneja mas abajo con PouchDB)
 
 
 // a) Insertar mediante objeto JSON con db.post() -> _id autogenerado
@@ -271,9 +261,40 @@ inputImagen.on('change', function () {
         preview.id = 'img-preview';
         preview.style.cssText = 'max-width:100%;margin-top:8px;border-radius:8px;';
         $('.nuevo-mensaje').append(preview);
+    } else if (preview.src.indexOf('blob:') === 0) {
+        URL.revokeObjectURL(preview.src);
     }
     preview.src = url;
 });
+
+function limpiarImagenSeleccionada() {
+    inputImagen.val('');
+    var preview = document.getElementById('img-preview');
+    if (preview) {
+        if (preview.src.indexOf('blob:') === 0) {
+            URL.revokeObjectURL(preview.src);
+        }
+        preview.remove();
+    }
+}
+
+// Lee el adjunto de PouchDB y devuelve un <img> listo para insertar en la burbuja
+async function mostrarImagenDeMensaje(docId, nombreAdjunto) {
+    try {
+        var blob = await db.getAttachment(docId, nombreAdjunto);
+        var url = URL.createObjectURL(blob);
+        var img = document.createElement('img');
+        img.className = 'bubble-img';
+        img.alt = 'Imagen del mensaje';
+        // Liberar memoria cuando la imagen ya cargo
+        img.onload = function () { URL.revokeObjectURL(url); };
+        img.src = url;
+        return img;
+    } catch (error) {
+        console.error('[adjunto] No se pudo cargar la imagen:', error);
+        return null;
+    }
+}
 
 
 async function cargarMensajes() {
@@ -361,11 +382,11 @@ async function eliminarMensaje(docId) {
 
 postBtn.on('click', async function () {
     var mensaje = txtMensaje.val();
-    if (mensaje.length === 0) {
+    var archivoBlob = obtenerImagenSeleccionada();
+    if (mensaje.length === 0 && !archivoBlob) {
         cancelarBtn.click();
         return;
     }
-    var archivoBlob = obtenerImagenSeleccionada();
     try {
         var doc = {
             personaje: usuario,
@@ -385,11 +406,7 @@ postBtn.on('click', async function () {
                 archivoBlob.type
             );
         }
-        inputImagen.val('');
-        var preview = document.getElementById('img-preview');
-        if (preview) { preview.remove(); }
-
-        cancelarBtn.click();
+        cancelarBtn.click(); // tambien limpia la imagen y el preview
         await cargarMensajes();
     } catch (error) {
         alert(manejarErrorPouchDB(error, 'guardar mensaje'));
