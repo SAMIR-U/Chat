@@ -337,6 +337,28 @@ function renderizarMensaje(doc) {
     }
 }
 
+async function editarMensaje(docId, nuevoTexto) {
+    try {
+        var doc = await db.get(docId);
+        doc.texto = nuevoTexto;
+        doc.fecha = new Date().toISOString();
+        await db.put(doc);
+        await cargarMensajes();
+    } catch (error) {
+        alert(manejarErrorPouchDB(error, 'editar mensaje'));
+    }
+}
+
+async function eliminarMensaje(docId) {
+    try {
+        var doc = await db.get(docId);
+        await db.remove(doc);
+        await cargarMensajes();
+    } catch (error) {
+        alert(manejarErrorPouchDB(error, 'eliminar mensaje'));
+    }
+}
+
 postBtn.on('click', async function () {
     var mensaje = txtMensaje.val();
     if (mensaje.length === 0) {
@@ -370,29 +392,113 @@ postBtn.on('click', async function () {
         cancelarBtn.click();
         await cargarMensajes();
     } catch (error) {
-        console.error('Error al guardar mensaje:', error);
+        alert(manejarErrorPouchDB(error, 'guardar mensaje'));
     }
 });
 
-async function editarMensaje(docId, nuevoTexto) {
+function manejarErrorPouchDB(error, contexto) {
+    console.error('[PouchDB] Error en ' + contexto + ':', {
+        status: error.status,
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+    });
+
+    if (error.message === 'database is closed') {
+        return 'La base de datos está cerrada. Recarga la aplicación.';
+    }
+    if (error.message === 'database is destroyed') {
+        return 'La base de datos fue eliminada. Recarga la aplicación.';
+    }
+
+    var mensajes = {
+        400: 'Error de formato en la operación.',
+        404: 'El documento o recurso no existe.',
+        409: 'Conflicto: el documento ya existe o fue modificado.',
+        412: 'El adjunto no existe o no está disponible.'
+    };
+
+    return mensajes[error.status] || 'Error inesperado. Intenta de nuevo.';
+}
+
+async function probarIdDuplicado() {
     try {
-        var doc = await db.get(docId);
-        doc.texto = nuevoTexto;
-        doc.fecha = new Date().toISOString();
-        await db.put(doc);
-        await cargarMensajes();
+        await db.put({
+            _id: 'mensaje-spiderman001',
+            personaje: 'spiderman',
+            texto: 'Intento duplicado',
+            fecha: new Date().toISOString(),
+            tipo: 'mensaje'
+        });
     } catch (error) {
-        console.error('Error al editar mensaje:', error);
+        alert(manejarErrorPouchDB(error, 'crear documento con id duplicado'));
     }
 }
 
-async function eliminarMensaje(docId) {
+async function probarRevIncorrecto() {
     try {
-        var doc = await db.get(docId);
-        await db.remove(doc);
-        await cargarMensajes();
+        await db.put({
+            _id: 'mensaje-spiderman001',
+            _rev: 'rev-invalido',
+            personaje: 'spiderman',
+            texto: 'Actualización con rev incorrecto',
+            tipo: 'mensaje'
+        });
     } catch (error) {
-        console.error('Error al eliminar mensaje:', error);
+        alert(manejarErrorPouchDB(error, 'actualizar con rev incorrecto'));
+    }
+}
+
+async function probarRevAusente() {
+    try {
+        await db.put({
+            _id: 'mensaje-spiderman001',
+            personaje: 'spiderman',
+            texto: 'Actualización sin rev',
+            tipo: 'mensaje'
+        });
+    } catch (error) {
+        alert(manejarErrorPouchDB(error, 'actualizar sin rev'));
+    }
+}
+
+async function probarEliminarInexistente() {
+    try {
+        var doc = await db.get('mensaje-no-existe-999');
+        await db.remove(doc);
+    } catch (error) {
+        alert(manejarErrorPouchDB(error, 'eliminar documento inexistente'));
+    }
+}
+
+async function probarAdjuntoInexistente() {
+    try {
+        var blob = await db.getAttachment('mensaje-spiderman001', 'imagen-inexistente.jpg');
+        URL.createObjectURL(blob);
+    } catch (error) {
+        alert(manejarErrorPouchDB(error, 'leer adjunto inexistente'));
+    }
+}
+
+async function probarBaseCerrada() {
+    db.close();
+    try {
+        await db.get('mensaje-spiderman001');
+    } catch (error) {
+        alert(manejarErrorPouchDB(error, 'operar con base cerrada'));
+    }
+}
+
+async function probarBaseDestruida() {
+    await db.destroy();
+    try {
+        await db.post({
+            personaje: 'hulk',
+            texto: 'Después de destruir',
+            tipo: 'mensaje'
+        });
+    } catch (error) {
+        alert(manejarErrorPouchDB(error, 'operar con base destruida'));
     }
 }
 
